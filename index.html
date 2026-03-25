@@ -205,7 +205,7 @@
                 // 静默识别图片
                 if (currentImageBase64) {
                     pStatus.innerText = "正在辩识图中笔墨...";
-                    const ocrRes = await fetch('http://127.0.0.1:8000/ocr', {
+                    const ocrRes = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/ocr', {
                         method: 'POST', headers: {'Content-Type': 'application/json','X-Echoes-Token': 'Echoes2024_Secure'},
                         body: JSON.stringify({ image: currentImageBase64 })
                     });
@@ -224,7 +224,7 @@
                 }
 
                 const fd = new FormData(); fd.append('text', finalText); fd.append('intensity', intensity);
-                const res = await fetch('http://127.0.0.1:8000/analyze', { method: 'POST', headers: {
+                const res = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/analyze', { method: 'POST', headers: {
         'X-Echoes-Token': 'Echoes2024_Secure' // 必须与后端 SAFE_ACCESS_TOKEN 一致
     },body: fd });
                 const reader = res.body.getReader(), decoder = new TextDecoder();
