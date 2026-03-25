@@ -2,15 +2,14 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>弦外 Echoes - 赏析实验室</title>
+    <title>弦外Echoes-深度阅读赏析家</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --scrollbar-width: 0px; }
         
-        /* 1. 彻底锁定根元素逻辑：防止偏移的关键 */
+        /* 1. 根元素锁定与防抖 */
         html.lock-scroll {
             overflow: hidden !important;
-            /* 动态补回滚动条宽度，防止内容向右闪动 */
             padding-right: var(--scrollbar-width) !important;
         }
         html.lock-scroll body {
@@ -19,7 +18,7 @@
 
         #output { white-space: pre-wrap; word-wrap: break-word; line-height: 2.2; }
         
-        /* 2. 交互高亮样式 */
+        /* 2. 基础高亮样式 */
         .highlight-item {
             color: inherit; border-bottom: 2px solid #e0e7ff; 
             cursor: pointer; position: relative; transition: all 0.2s ease; padding-bottom: 2px;
@@ -28,31 +27,37 @@
             color: #4f46e5; background-color: #f5f3ff; border-bottom-color: #4f46e5;
         }
 
-        /* 3. 目标点击后的“穿透”高亮：确保在遮罩层之上 */
+        /* 3. 激活高亮：穿透背景模糊但必须低于弹窗 (Level 1001) */
         .active-highlight {
             background-color: #f5f3ff !important;
             color: #4f46e5 !important;
             border-bottom: 2px solid #4f46e5 !important;
-            z-index: 1001 !important; /* 必须高于 overlay 的 1000 */
+            z-index: 1001 !important; 
             box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
             border-radius: 4px;
-            position: relative; /* 激活 z-index */
+            position: relative;
         }
         
-        /* 4. 浮层样式 */
+        /* 4. 遮罩层容器：必须设置为最高层级 (Level 5000) */
+        /* 这样它内部的所有东西（包括卡片）都会整体压在 1001 之上 */
         .analysis-overlay {
             position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4);
             display: none; justify-content: center; align-items: center;
-            z-index: 1000; backdrop-filter: blur(4px);
+            z-index: 5000 !important; 
+            
         }
+
+        /* 5. 弹窗卡片 */
         .analysis-card {
             background: white; width: 90%; max-width: 450px; max-height: 70vh;
-            padding: 24px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            padding: 24px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
             position: relative; overflow-y: auto; border: 1px solid #f0f0f0;
         }
+
         .close-btn { float: right; cursor: pointer; color: #d1d5db; font-size: 24px; line-height: 1; margin-top: -5px; }
         .close-btn:hover { color: #4f46e5; }
 
+        /* 历史记录与模式切换 */
         .history-active { border-color: #4f46e5 !important; background-color: #f5f3ff !important; }
         .history-card:hover .del-btn { opacity: 1; }
         .mode-text { transition: all 0.3s; color: #9ca3af; font-weight: bold; font-size: 12px; cursor: pointer; }
@@ -65,9 +70,11 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.1); cursor: pointer; z-index: 10;
         }
         .preview-box img { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* 图片大图层级也相应提高 */
         #img-modal {
             display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-            z-index: 2000; align-items: center; justify-content: center; cursor: zoom-out;
+            z-index: 6000; align-items: center; justify-content: center; cursor: zoom-out;
         }
 
         .char-counter {
@@ -145,42 +152,32 @@
         let currentImageBase64 = null; 
         updateHistoryUI();
 
-        // --- 核心浮层控制逻辑（含精密防抖） ---
         function openAnalysis(content, el) {
-            // 1. 处理文字持续高亮
+            // 先处理高亮
             if (lastClickedElement) lastClickedElement.classList.remove('active-highlight');
             lastClickedElement = el;
             el.classList.add('active-highlight');
 
-            // 2. 内容填充
             const body = document.getElementById('analysis-body');
             body.innerHTML = content.replace(/\n/g, '<br>');
 
-            // 3. 【精准防抖逻辑】
-            // 先计算滚动条宽度
+            // 防抖
             const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-            // 将宽度存入 CSS 变量
             document.documentElement.style.setProperty('--scrollbar-width', scrollbarWidth + 'px');
-            // 锁定 HTML 根元素
             document.documentElement.classList.add('lock-scroll');
 
-            // 4. 显示浮层
             document.getElementById('analysis-overlay').style.display = 'flex';
         }
 
         function closeAnalysis() {
             document.getElementById('analysis-overlay').style.display = 'none';
-            // 解锁 HTML 根元素
             document.documentElement.classList.remove('lock-scroll');
-            
-            // 移除文字高亮
             if (lastClickedElement) {
                 lastClickedElement.classList.remove('active-highlight');
                 lastClickedElement = null;
             }
         }
 
-        // --- 基础辅助功能 ---
         function checkLen(el) {
             const max = 2000;
             const counter = document.getElementById('char-count');
@@ -206,7 +203,6 @@
         function viewImg() { document.getElementById('modal-img').src = document.getElementById('pv-img').src; document.getElementById('img-modal').style.display='flex'; }
         function removeImg(e) { e.stopPropagation(); document.getElementById('pv-box').style.display='none'; document.getElementById('f-file').value=''; currentImageBase64 = null; }
 
-        // --- 结果渲染逻辑 ---
         function renderResult(text, highlights, intent) {
             const clean = (str) => str.replace(/[\u2028\u2029]/g, '').replace(/\s+/g, '').replace(/[，。！？；：、“”‘’,.!?;:]/g, '');
             const cleanText = clean(text);
@@ -245,7 +241,6 @@
             ranges.forEach(r => {
                 result += escapeHtml(text.slice(cursor, r.start));
                 const safeComment = escapeHtml(r.comment).replace(/'/g, "\\'");
-                // 传出 this 以绑定 DOM
                 result += `<span class="highlight-item" onclick="openAnalysis('${safeComment}', this)">${escapeHtml(text.slice(r.start, r.end))}</span>`;
                 cursor = r.end;
             });
@@ -254,7 +249,6 @@
             return result + `<div class="mt-8 flex flex-col gap-2"><div class="p-4 bg-gray-50 rounded-xl border border-gray-100 flex gap-3 items-start shadow-sm text-left"><div class="w-1 self-stretch bg-indigo-600 rounded-full shrink-0"></div><div class="flex flex-col gap-1"><span class="text-[15px] font-black text-indigo-600 uppercase tracking-widest leading-none italic ">创作用意概括</span><p class="text-lg font-bold text-gray-800 leading-normal italic">${escapeHtml(intent)}</p></div></div><p class="text-[15px] text-gray-400 font-medium ml-1 italic">赏析结果乃一家之言，敬供参考。</p></div>`;
         }
 
-        // --- 模式切换 ---
         function setMode(val) { document.getElementById('lvl').value = val; updateUI(val); }
         function updateUI(val) {
             const std = document.getElementById('label-std'), adv = document.getElementById('label-adv');
@@ -262,7 +256,6 @@
             else { std.classList.remove('mode-active'); adv.classList.add('mode-active'); }
         }
 
-        // --- 主赏析请求逻辑 ---
         async function go() {
             const btn = document.getElementById('btn'), output = document.getElementById('output'), textInput = document.getElementById('txt').value, intensity = document.getElementById('lvl').value;
             if(!textInput.trim() && !currentImageBase64) return;
@@ -273,7 +266,6 @@
             let finalText = textInput.trim();
 
             try {
-                // 1. OCR 识别
                 if (currentImageBase64) {
                     pStatus.innerText = "正在辩识图中笔墨...";
                     const ocrRes = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/ocr', {
@@ -289,7 +281,6 @@
                     }
                 }
 
-                // 2. 流式赏析
                 const fd = new FormData(); fd.append('text', finalText); fd.append('intensity', intensity);
                 const res = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/analyze', { 
                     method: 'POST', headers: {'X-Echoes-Token': 'Echoes2024_Secure'}, body: fd 
@@ -303,8 +294,6 @@
                     if (done) break;
                     rawData += decoder.decode(value);
                     const len = rawData.length;
-                    
-                    // 状态机动态文案
                     if (!hasStarted && len > 0) {
                         hasStarted = true;
                         pStatus.innerText = "捕捉文字间的弦外之音...";
@@ -331,7 +320,6 @@
             finally { btn.disabled = false; btn.innerText = "开始赏析"; }
         }
 
-        // --- 历史管理 ---
         function saveToHistory(id, text, results, intent, html, intensity) {
             historyData.unshift({ id, time: new Date().toLocaleTimeString(), preview: text.slice(0, 15), text, html, intensity });
             localStorage.setItem('echoes_history', JSON.stringify(historyData));
