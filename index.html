@@ -2,33 +2,62 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>弦外 Echoes - 雅致赏析版</title>
+    <title>弦外 Echoes - 赏析实验室</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        :root { --scrollbar-width: 0px; }
+        
+        /* 1. 彻底锁定根元素逻辑：防止偏移的关键 */
+        html.lock-scroll {
+            overflow: hidden !important;
+            /* 动态补回滚动条宽度，防止内容向右闪动 */
+            padding-right: var(--scrollbar-width) !important;
+        }
+        html.lock-scroll body {
+            overflow: hidden !important;
+        }
+
         #output { white-space: pre-wrap; word-wrap: break-word; line-height: 2.2; }
+        
+        /* 2. 交互高亮样式 */
         .highlight-item {
             color: inherit; border-bottom: 2px solid #e0e7ff; 
-            cursor: help; position: relative; transition: all 0.2s ease; padding-bottom: 2px;
+            cursor: pointer; position: relative; transition: all 0.2s ease; padding-bottom: 2px;
         }
         .highlight-item:hover {
-            color: #4f46e5; background-color: #f5f3ff; border-bottom-color: #4f46e5; z-index: 50;
+            color: #4f46e5; background-color: #f5f3ff; border-bottom-color: #4f46e5;
         }
-        .highlight-item:hover::after {
-            content: attr(data-comment); position: absolute; bottom: 140%; left: 50%;
-            transform: translateX(-50%); background: #1f2937; color: white; padding: 12px 16px;
-            border-radius: 10px; font-size: 14px; width: 280px; z-index: 100; line-height: 1.6;
-            font-weight: normal; box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.3); pointer-events: none;
+
+        /* 3. 目标点击后的“穿透”高亮：确保在遮罩层之上 */
+        .active-highlight {
+            background-color: #f5f3ff !important;
+            color: #4f46e5 !important;
+            border-bottom: 2px solid #4f46e5 !important;
+            z-index: 1001 !important; /* 必须高于 overlay 的 1000 */
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+            border-radius: 4px;
+            position: relative; /* 激活 z-index */
         }
-        .highlight-item:hover::before {
-            content: ''; position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
-            border: 8px solid transparent; border-top-color: #1f2937; z-index: 101;
+        
+        /* 4. 浮层样式 */
+        .analysis-overlay {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4);
+            display: none; justify-content: center; align-items: center;
+            z-index: 1000; backdrop-filter: blur(4px);
         }
+        .analysis-card {
+            background: white; width: 90%; max-width: 450px; max-height: 70vh;
+            padding: 24px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            position: relative; overflow-y: auto; border: 1px solid #f0f0f0;
+        }
+        .close-btn { float: right; cursor: pointer; color: #d1d5db; font-size: 24px; line-height: 1; margin-top: -5px; }
+        .close-btn:hover { color: #4f46e5; }
+
         .history-active { border-color: #4f46e5 !important; background-color: #f5f3ff !important; }
         .history-card:hover .del-btn { opacity: 1; }
         .mode-text { transition: all 0.3s; color: #9ca3af; font-weight: bold; font-size: 12px; cursor: pointer; }
         .mode-active { color: #4f46e5; transform: scale(1.1); }
 
-        /* 图片预览组件样式 */
         .preview-box {
             position: absolute; left: 1.25rem; bottom: 2.5rem;
             width: 75px; height: 75px; border-radius: 12px;
@@ -38,10 +67,9 @@
         .preview-box img { width: 100%; height: 100%; object-fit: cover; }
         #img-modal {
             display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-            z-index: 1000; align-items: center; justify-content: center; cursor: zoom-out;
+            z-index: 2000; align-items: center; justify-content: center; cursor: zoom-out;
         }
 
-        /* 新增：字数计数器样式 */
         .char-counter {
             position: absolute; right: 1.5rem; bottom: 2.5rem;
             font-size: 10px; font-weight: 800; color: #d1d5db;
@@ -51,6 +79,14 @@
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 md:p-8 text-gray-800">
+    <div id="analysis-overlay" class="analysis-overlay" onclick="closeAnalysis()">
+        <div class="analysis-card" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeAnalysis()">×</span>
+            <div class="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-3 italic">Analysis Detail</div>
+            <div id="analysis-body" class="text-gray-700 leading-relaxed text-base"></div>
+        </div>
+    </div>
+
     <div id="img-modal" onclick="this.style.display='none'">
         <img id="modal-img" class="max-w-[90%] max-h-[90%] rounded-lg shadow-2xl">
     </div>
@@ -67,14 +103,12 @@
             
             <div class="relative">
                 <textarea id="txt" oninput="checkLen(this)" class="w-full h-56 p-5 bg-gray-50 border border-gray-100 rounded-2xl mb-6 focus:ring-4 focus:ring-indigo-50 outline-none transition-all text-lg leading-relaxed resize-none" placeholder="输入文学片段..."></textarea>
-                
                 <div id="char-count" class="char-counter">0 / 2000</div>
-
+                
                 <div id="pv-box" class="preview-box" onclick="viewImg()">
                     <img id="pv-img" src="">
                     <div onclick="removeImg(event)" class="absolute top-0 right-0 bg-black/40 text-white w-5 h-5 flex items-center justify-center text-xs hover:bg-red-500 transition-colors">×</div>
                 </div>
-
                 <input type="file" id="f-file" class="hidden" accept="image/*" onchange="upImg(this)">
                 <button onclick="document.getElementById('f-file').click()" class="absolute top-4 right-4 p-2 text-gray-300 hover:text-indigo-600 transition-all" title="图片识词">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -87,15 +121,10 @@
                     <input type="range" id="lvl" min="1" max="2" value="1" step="1" oninput="updateUI(this.value)" class="w-12 h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-indigo-600">
                     <span id="label-adv" class="mode-text" onclick="setMode(2)">长句剖析</span>
                 </div>
-                
-                <button onclick="go()" id="btn" class="bg-indigo-600 text-white px-12 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 active:scale-95">
-                    开始赏析
-                </button>
+                <button onclick="go()" id="btn" class="bg-indigo-600 text-white px-12 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 active:scale-95">开始赏析</button>
             </div>
-
-            <div id="output-container" class="border-t border-gray-50">
-                <div id="output" class="text-lg leading-relaxed pt-6"></div>
-            </div>
+            
+            <div id="output-container" class="border-t border-gray-50"><div id="output" class="text-lg leading-relaxed pt-6"></div></div>
         </div>
 
         <div class="w-full md:w-80 flex flex-col h-[calc(100vh-4rem)] sticky top-8">
@@ -112,10 +141,46 @@
     <script>
         let historyData = JSON.parse(localStorage.getItem('echoes_history') || '[]');
         let currentActiveId = null;
+        let lastClickedElement = null; 
         let currentImageBase64 = null; 
         updateHistoryUI();
 
-        // --- 字数限制与实时计数 ---
+        // --- 核心浮层控制逻辑（含精密防抖） ---
+        function openAnalysis(content, el) {
+            // 1. 处理文字持续高亮
+            if (lastClickedElement) lastClickedElement.classList.remove('active-highlight');
+            lastClickedElement = el;
+            el.classList.add('active-highlight');
+
+            // 2. 内容填充
+            const body = document.getElementById('analysis-body');
+            body.innerHTML = content.replace(/\n/g, '<br>');
+
+            // 3. 【精准防抖逻辑】
+            // 先计算滚动条宽度
+            const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+            // 将宽度存入 CSS 变量
+            document.documentElement.style.setProperty('--scrollbar-width', scrollbarWidth + 'px');
+            // 锁定 HTML 根元素
+            document.documentElement.classList.add('lock-scroll');
+
+            // 4. 显示浮层
+            document.getElementById('analysis-overlay').style.display = 'flex';
+        }
+
+        function closeAnalysis() {
+            document.getElementById('analysis-overlay').style.display = 'none';
+            // 解锁 HTML 根元素
+            document.documentElement.classList.remove('lock-scroll');
+            
+            // 移除文字高亮
+            if (lastClickedElement) {
+                lastClickedElement.classList.remove('active-highlight');
+                lastClickedElement = null;
+            }
+        }
+
+        // --- 基础辅助功能 ---
         function checkLen(el) {
             const max = 2000;
             const counter = document.getElementById('char-count');
@@ -127,7 +192,6 @@
             counter.innerText = `${el.value.length} / ${max}`;
         }
 
-        // --- 图片处理逻辑 ---
         function upImg(input) {
             const file = input.files[0];
             if (!file || file.size > 20 * 1024 * 1024) return;
@@ -142,18 +206,19 @@
         function viewImg() { document.getElementById('modal-img').src = document.getElementById('pv-img').src; document.getElementById('img-modal').style.display='flex'; }
         function removeImg(e) { e.stopPropagation(); document.getElementById('pv-box').style.display='none'; document.getElementById('f-file').value=''; currentImageBase64 = null; }
 
-        // --- 核心渲染算法 (完全保留) ---
+        // --- 结果渲染逻辑 ---
         function renderResult(text, highlights, intent) {
             const clean = (str) => str.replace(/[\u2028\u2029]/g, '').replace(/\s+/g, '').replace(/[，。！？；：、“”‘’,.!?;:]/g, '');
             const cleanText = clean(text);
             const ranges = [];
             const occupied = new Array(text.length).fill(false);
+            
             highlights.forEach(item => {
                 if (!item.fragment || item.fragment.length < 2) return;
                 const cleanFrag = clean(item.fragment);
-                if (!cleanFrag) return;
                 const idx = cleanText.indexOf(cleanFrag);
                 if (idx === -1) return;
+                
                 let count = 0, start = -1, end = -1;
                 for (let i = 0; i < text.length; i++) {
                     if (!/[\s，。！？；：、“”‘’,.!?;:]/.test(text[i])) {
@@ -162,6 +227,7 @@
                         count++;
                     }
                 }
+                
                 if (start !== -1 && end !== -1) {
                     let conflict = false;
                     for (let i = start; i < end; i++) if (occupied[i]) { conflict = true; break; }
@@ -171,18 +237,24 @@
                     }
                 }
             });
+
             ranges.sort((a, b) => a.start - b.start);
             let result = "", cursor = 0;
             const escapeHtml = (str) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            
             ranges.forEach(r => {
                 result += escapeHtml(text.slice(cursor, r.start));
-                result += `<span class="highlight-item" data-comment="${escapeHtml(r.comment)}">${escapeHtml(text.slice(r.start, r.end))}</span>`;
+                const safeComment = escapeHtml(r.comment).replace(/'/g, "\\'");
+                // 传出 this 以绑定 DOM
+                result += `<span class="highlight-item" onclick="openAnalysis('${safeComment}', this)">${escapeHtml(text.slice(r.start, r.end))}</span>`;
                 cursor = r.end;
             });
             result += escapeHtml(text.slice(cursor));
+
             return result + `<div class="mt-8 flex flex-col gap-2"><div class="p-4 bg-gray-50 rounded-xl border border-gray-100 flex gap-3 items-start shadow-sm text-left"><div class="w-1 self-stretch bg-indigo-600 rounded-full shrink-0"></div><div class="flex flex-col gap-1"><span class="text-[15px] font-black text-indigo-600 uppercase tracking-widest leading-none italic ">创作用意概括</span><p class="text-lg font-bold text-gray-800 leading-normal italic">${escapeHtml(intent)}</p></div></div><p class="text-[15px] text-gray-400 font-medium ml-1 italic">赏析结果乃一家之言，敬供参考。</p></div>`;
         }
 
+        // --- 模式切换 ---
         function setMode(val) { document.getElementById('lvl').value = val; updateUI(val); }
         function updateUI(val) {
             const std = document.getElementById('label-std'), adv = document.getElementById('label-adv');
@@ -190,7 +262,7 @@
             else { std.classList.remove('mode-active'); adv.classList.add('mode-active'); }
         }
 
-        // --- 核心赏析逻辑 ---
+        // --- 主赏析请求逻辑 ---
         async function go() {
             const btn = document.getElementById('btn'), output = document.getElementById('output'), textInput = document.getElementById('txt').value, intensity = document.getElementById('lvl').value;
             if(!textInput.trim() && !currentImageBase64) return;
@@ -198,11 +270,10 @@
             btn.disabled = true; btn.innerText = "赏析中...";
             output.innerHTML = `<div class="py-12 flex flex-col items-center justify-start text-center"><p id="p-status" class="text-base text-indigo-500 font-bold tracking-widest animate-pulse italic">正在建立灵感连接...</p><p id="p-sub" class="text-[10px] text-gray-300 font-black uppercase tracking-[0.3em] mt-3">Echoes is processing the text</p></div>`;
             const pStatus = document.getElementById('p-status');
-
             let finalText = textInput.trim();
 
             try {
-                // 静默识别图片
+                // 1. OCR 识别
                 if (currentImageBase64) {
                     pStatus.innerText = "正在辩识图中笔墨...";
                     const ocrRes = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/ocr', {
@@ -213,20 +284,17 @@
                     if(ocrData.words_result) {
                         const ocrText = ocrData.words_result.map(i => i.words).join('\n');
                         const combined = finalText ? `${finalText}\n${ocrText}` : ocrText;
-                        // 合并识别结果时的 2000 字二次截断
-                        if (combined.length > 2000) {
-                            finalText = combined.slice(0, 2000);
-                            pStatus.innerText = "内容已超上限，截取前2000字赏析...";
-                        } else {
-                            finalText = combined;
-                        }
+                        finalText = combined.length > 2000 ? combined.slice(0, 2000) : combined;
+                        if (combined.length > 2000) pStatus.innerText = "内容已超上限，截取前2000字赏析...";
                     }
                 }
 
+                // 2. 流式赏析
                 const fd = new FormData(); fd.append('text', finalText); fd.append('intensity', intensity);
-                const res = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/analyze', { method: 'POST', headers: {
-        'X-Echoes-Token': 'Echoes2024_Secure' // 必须与后端 SAFE_ACCESS_TOKEN 一致
-    },body: fd });
+                const res = await fetch('https://unprofound-kayson-futuristic.ngrok-free.dev/analyze', { 
+                    method: 'POST', headers: {'X-Echoes-Token': 'Echoes2024_Secure'}, body: fd 
+                });
+                
                 const reader = res.body.getReader(), decoder = new TextDecoder();
                 let rawData = "", hasStarted = false;
 
@@ -235,6 +303,8 @@
                     if (done) break;
                     rawData += decoder.decode(value);
                     const len = rawData.length;
+                    
+                    // 状态机动态文案
                     if (!hasStarted && len > 0) {
                         hasStarted = true;
                         pStatus.innerText = "捕捉文字间的弦外之音...";
@@ -249,12 +319,19 @@
                 const data = JSON.parse(rawData);
                 const id = Date.now(); currentActiveId = id;
                 const html = renderResult(finalText, data.results, data.overall_intent);
-                setTimeout(() => { output.innerHTML = html; saveToHistory(id, finalText, data.results, data.overall_intent, html, intensity); }, 400);
+                
+                setTimeout(() => { 
+                    output.innerHTML = html; 
+                    saveToHistory(id, finalText, data.results, data.overall_intent, html, intensity); 
+                }, 400);
 
-            } catch (e) { output.innerHTML = "<div class='py-12 text-center text-red-400'>服务异常，请检查后端状态。</div>"; }
+            } catch (e) { 
+                output.innerHTML = "<div class='py-12 text-center text-red-400 font-bold italic'>服务器在深思中迷路了，请检查后端运行状态。</div>"; 
+            }
             finally { btn.disabled = false; btn.innerText = "开始赏析"; }
         }
 
+        // --- 历史管理 ---
         function saveToHistory(id, text, results, intent, html, intensity) {
             historyData.unshift({ id, time: new Date().toLocaleTimeString(), preview: text.slice(0, 15), text, html, intensity });
             localStorage.setItem('echoes_history', JSON.stringify(historyData));
@@ -264,7 +341,17 @@
             const list = document.getElementById('h-list'); document.getElementById('h-count').innerText = historyData.length;
             list.innerHTML = historyData.map(h => `<div class="history-card relative p-4 bg-white border border-gray-100 rounded-2xl cursor-pointer hover:border-indigo-200 transition-all group ${h.id === currentActiveId ? 'history-active' : ''}" onclick="loadH(${h.id})"><div class="flex justify-between items-start mb-1"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-400 font-bold">${h.time}</span><span class="text-[8px] px-1.5 py-0.5 rounded-sm ${h.intensity == 2 ? 'bg-indigo-50 text-indigo-400' : 'bg-gray-100 text-gray-400'} font-bold">${h.intensity == 2 ? '高级' : '标准'}</span></div><button onclick="delH(event, ${h.id})" class="del-btn opacity-0 text-gray-300 hover:text-red-500 font-bold">×</button></div><div class="text-sm text-gray-600 truncate pr-4 font-medium">${h.preview}...</div></div>`).join('');
         }
-        function loadH(id) { currentActiveId = id; const h = historyData.find(i => i.id === id); if(h) { document.getElementById('txt').value = h.text; document.getElementById('char-count').innerText = `${h.text.length} / 2000`; document.getElementById('output').innerHTML = h.html; setMode(h.intensity); updateHistoryUI(); } }
+        function loadH(id) { 
+            currentActiveId = id; 
+            const h = historyData.find(i => i.id === id); 
+            if(h) { 
+                document.getElementById('txt').value = h.text; 
+                document.getElementById('char-count').innerText = `${h.text.length} / 2000`; 
+                document.getElementById('output').innerHTML = h.html; 
+                setMode(h.intensity); 
+                updateHistoryUI(); 
+            } 
+        }
         function delH(e, id) { e.stopPropagation(); historyData = historyData.filter(i => i.id !== id); localStorage.setItem('echoes_history', JSON.stringify(historyData)); updateHistoryUI(); }
     </script>
 </body>
