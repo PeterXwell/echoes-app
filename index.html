@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>弦外 Echoes - 雅致赏析版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #output { white-space: pre-wrap; word-wrap: break-word; line-height: 2.2; }
+        .highlight-item {
+            color: inherit; border-bottom: 2px solid #e0e7ff; 
+            cursor: help; position: relative; transition: all 0.2s ease; padding-bottom: 2px;
+        }
+        .highlight-item:hover {
+            color: #4f46e5; background-color: #f5f3ff; border-bottom-color: #4f46e5; z-index: 50;
+        }
+        .highlight-item:hover::after {
+            content: attr(data-comment); position: absolute; bottom: 140%; left: 50%;
+            transform: translateX(-50%); background: #1f2937; color: white; padding: 12px 16px;
+            border-radius: 10px; font-size: 14px; width: 280px; z-index: 100; line-height: 1.6;
+            font-weight: normal; box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.3); pointer-events: none;
+        }
+        .highlight-item:hover::before {
+            content: ''; position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
+            border: 8px solid transparent; border-top-color: #1f2937; z-index: 101;
+        }
+        .history-active { border-color: #4f46e5 !important; background-color: #f5f3ff !important; }
+        .history-card:hover .del-btn { opacity: 1; }
+        .mode-text { transition: all 0.3s; color: #9ca3af; font-weight: bold; font-size: 12px; cursor: pointer; }
+        .mode-active { color: #4f46e5; transform: scale(1.1); }
+
+        /* 图片预览组件样式 */
+        .preview-box {
+            position: absolute; left: 1.25rem; bottom: 2.5rem;
+            width: 75px; height: 75px; border-radius: 12px;
+            overflow: hidden; border: 2px solid white; display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); cursor: pointer; z-index: 10;
+        }
+        .preview-box img { width: 100%; height: 100%; object-fit: cover; }
+        #img-modal {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            z-index: 1000; align-items: center; justify-content: center; cursor: zoom-out;
+        }
+
+        /* 新增：字数计数器样式 */
+        .char-counter {
+            position: absolute; right: 1.5rem; bottom: 2.5rem;
+            font-size: 10px; font-weight: 800; color: #d1d5db;
+            letter-spacing: 0.1em; pointer-events: none; transition: all 0.3s;
+        }
+        .char-limit { color: #ef4444; transform: scale(1.1); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8 text-gray-800">
+    <div id="img-modal" onclick="this.style.display='none'">
+        <img id="modal-img" class="max-w-[90%] max-h-[90%] rounded-lg shadow-2xl">
+    </div>
+
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row gap-8">
+        <div class="flex-1 bg-white p-8 rounded-3xl shadow-sm border border-gray-200">
+            <div class="mb-8">
+                <div class="flex items-baseline gap-4">
+                    <h1 class="text-3xl font-black text-indigo-600 tracking-tight italic">弦外</h1>
+                    <span class="text-gray-400 font-medium text-base tracking-wide italic">奇文共欣赏，疑义相与析</span>
+                </div>
+                <div class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em] mt-1 ml-1">Echoes Literary Analysis Studio</div>
+            </div>
+            
+            <div class="relative">
+                <textarea id="txt" oninput="checkLen(this)" class="w-full h-56 p-5 bg-gray-50 border border-gray-100 rounded-2xl mb-6 focus:ring-4 focus:ring-indigo-50 outline-none transition-all text-lg leading-relaxed resize-none" placeholder="输入文学片段..."></textarea>
+                
+                <div id="char-count" class="char-counter">0 / 2000</div>
+
+                <div id="pv-box" class="preview-box" onclick="viewImg()">
+                    <img id="pv-img" src="">
+                    <div onclick="removeImg(event)" class="absolute top-0 right-0 bg-black/40 text-white w-5 h-5 flex items-center justify-center text-xs hover:bg-red-500 transition-colors">×</div>
+                </div>
+
+                <input type="file" id="f-file" class="hidden" accept="image/*" onchange="upImg(this)">
+                <button onclick="document.getElementById('f-file').click()" class="absolute top-4 right-4 p-2 text-gray-300 hover:text-indigo-600 transition-all" title="图片识词">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                </button>
+            </div>
+            
+            <div class="flex items-center justify-between mb-10 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm">
+                <div class="flex items-center gap-4 px-2">
+                    <span id="label-std" class="mode-text mode-active" onclick="setMode(1)">字词浅析</span>
+                    <input type="range" id="lvl" min="1" max="2" value="1" step="1" oninput="updateUI(this.value)" class="w-12 h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                    <span id="label-adv" class="mode-text" onclick="setMode(2)">长句剖析</span>
+                </div>
+                
+                <button onclick="go()" id="btn" class="bg-indigo-600 text-white px-12 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 active:scale-95">
+                    开始赏析
+                </button>
+            </div>
+
+            <div id="output-container" class="border-t border-gray-50">
+                <div id="output" class="text-lg leading-relaxed pt-6"></div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-80 flex flex-col h-[calc(100vh-4rem)] sticky top-8">
+            <div class="bg-white rounded-3xl border border-gray-200 shadow-sm flex flex-col h-full overflow-hidden">
+                <div class="p-5 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                    <h2 class="font-bold text-gray-500 text-xs uppercase tracking-widest">赏析历史</h2>
+                    <span id="h-count" class="bg-indigo-100 text-indigo-600 px-2.5 py-0.5 rounded-full text-[10px] font-black">0</span>
+                </div>
+                <div id="h-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let historyData = JSON.parse(localStorage.getItem('echoes_history') || '[]');
+        let currentActiveId = null;
+        let currentImageBase64 = null; 
+        updateHistoryUI();
+
+        // --- 字数限制与实时计数 ---
+        function checkLen(el) {
+            const max = 2000;
+            const counter = document.getElementById('char-count');
+            if (el.value.length > max) {
+                el.value = el.value.slice(0, max);
+                counter.classList.add('char-limit');
+                setTimeout(() => counter.classList.remove('char-limit'), 500);
+            }
+            counter.innerText = `${el.value.length} / ${max}`;
+        }
+
+        // --- 图片处理逻辑 ---
+        function upImg(input) {
+            const file = input.files[0];
+            if (!file || file.size > 20 * 1024 * 1024) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentImageBase64 = e.target.result.split(',')[1]; 
+                document.getElementById('pv-img').src = e.target.result;
+                document.getElementById('pv-box').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+        function viewImg() { document.getElementById('modal-img').src = document.getElementById('pv-img').src; document.getElementById('img-modal').style.display='flex'; }
+        function removeImg(e) { e.stopPropagation(); document.getElementById('pv-box').style.display='none'; document.getElementById('f-file').value=''; currentImageBase64 = null; }
+
+        // --- 核心渲染算法 (完全保留) ---
+        function renderResult(text, highlights, intent) {
+            const clean = (str) => str.replace(/[\u2028\u2029]/g, '').replace(/\s+/g, '').replace(/[，。！？；：、“”‘’,.!?;:]/g, '');
+            const cleanText = clean(text);
+            const ranges = [];
+            const occupied = new Array(text.length).fill(false);
+            highlights.forEach(item => {
+                if (!item.fragment || item.fragment.length < 2) return;
+                const cleanFrag = clean(item.fragment);
+                if (!cleanFrag) return;
+                const idx = cleanText.indexOf(cleanFrag);
+                if (idx === -1) return;
+                let count = 0, start = -1, end = -1;
+                for (let i = 0; i < text.length; i++) {
+                    if (!/[\s，。！？；：、“”‘’,.!?;:]/.test(text[i])) {
+                        if (count === idx) start = i;
+                        if (count === idx + cleanFrag.length - 1) { end = i + 1; break; }
+                        count++;
+                    }
+                }
+                if (start !== -1 && end !== -1) {
+                    let conflict = false;
+                    for (let i = start; i < end; i++) if (occupied[i]) { conflict = true; break; }
+                    if (!conflict) {
+                        for (let i = start; i < end; i++) occupied[i] = true;
+                        ranges.push({ start, end, comment: item.comment });
+                    }
+                }
+            });
+            ranges.sort((a, b) => a.start - b.start);
+            let result = "", cursor = 0;
+            const escapeHtml = (str) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            ranges.forEach(r => {
+                result += escapeHtml(text.slice(cursor, r.start));
+                result += `<span class="highlight-item" data-comment="${escapeHtml(r.comment)}">${escapeHtml(text.slice(r.start, r.end))}</span>`;
+                cursor = r.end;
+            });
+            result += escapeHtml(text.slice(cursor));
+            return result + `<div class="mt-8 flex flex-col gap-2"><div class="p-4 bg-gray-50 rounded-xl border border-gray-100 flex gap-3 items-start shadow-sm text-left"><div class="w-1 self-stretch bg-indigo-600 rounded-full shrink-0"></div><div class="flex flex-col gap-1"><span class="text-[15px] font-black text-indigo-600 uppercase tracking-widest leading-none italic ">创作用意概括</span><p class="text-lg font-bold text-gray-800 leading-normal italic">${escapeHtml(intent)}</p></div></div><p class="text-[15px] text-gray-400 font-medium ml-1 italic">赏析结果乃一家之言，敬供参考。</p></div>`;
+        }
+
+        function setMode(val) { document.getElementById('lvl').value = val; updateUI(val); }
+        function updateUI(val) {
+            const std = document.getElementById('label-std'), adv = document.getElementById('label-adv');
+            if (val == 1) { std.classList.add('mode-active'); adv.classList.remove('mode-active'); } 
+            else { std.classList.remove('mode-active'); adv.classList.add('mode-active'); }
+        }
+
+        // --- 核心赏析逻辑 ---
+        async function go() {
+            const btn = document.getElementById('btn'), output = document.getElementById('output'), textInput = document.getElementById('txt').value, intensity = document.getElementById('lvl').value;
+            if(!textInput.trim() && !currentImageBase64) return;
+            
+            btn.disabled = true; btn.innerText = "赏析中...";
+            output.innerHTML = `<div class="py-12 flex flex-col items-center justify-start text-center"><p id="p-status" class="text-base text-indigo-500 font-bold tracking-widest animate-pulse italic">正在建立灵感连接...</p><p id="p-sub" class="text-[10px] text-gray-300 font-black uppercase tracking-[0.3em] mt-3">Echoes is processing the text</p></div>`;
+            const pStatus = document.getElementById('p-status');
+
+            let finalText = textInput.trim();
+
+            try {
+                // 静默识别图片
+                if (currentImageBase64) {
+                    pStatus.innerText = "正在辩识图中笔墨...";
+                    const ocrRes = await fetch('http://127.0.0.1:8000/ocr', {
+                        method: 'POST', headers: {'Content-Type': 'application/json','X-Echoes-Token': 'Echoes2024_Secure'},
+                        body: JSON.stringify({ image: currentImageBase64 })
+                    });
+                    const ocrData = await ocrRes.json();
+                    if(ocrData.words_result) {
+                        const ocrText = ocrData.words_result.map(i => i.words).join('\n');
+                        const combined = finalText ? `${finalText}\n${ocrText}` : ocrText;
+                        // 合并识别结果时的 2000 字二次截断
+                        if (combined.length > 2000) {
+                            finalText = combined.slice(0, 2000);
+                            pStatus.innerText = "内容已超上限，截取前2000字赏析...";
+                        } else {
+                            finalText = combined;
+                        }
+                    }
+                }
+
+                const fd = new FormData(); fd.append('text', finalText); fd.append('intensity', intensity);
+                const res = await fetch('http://127.0.0.1:8000/analyze', { method: 'POST', headers: {
+        'X-Echoes-Token': 'Echoes2024_Secure' // 必须与后端 SAFE_ACCESS_TOKEN 一致
+    },body: fd });
+                const reader = res.body.getReader(), decoder = new TextDecoder();
+                let rawData = "", hasStarted = false;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    rawData += decoder.decode(value);
+                    const len = rawData.length;
+                    if (!hasStarted && len > 0) {
+                        hasStarted = true;
+                        pStatus.innerText = "捕捉文字间的弦外之音...";
+                    } else if (len > 400 && len < 1000) {
+                        pStatus.innerText = "正在构建深度意象关联...";
+                    } else if (len >= 1000) {
+                        pStatus.innerText = "正在打磨最后赏析辞令...";
+                    }
+                }
+                pStatus.innerText = "灵感萃取完成，正在呈现...";
+
+                const data = JSON.parse(rawData);
+                const id = Date.now(); currentActiveId = id;
+                const html = renderResult(finalText, data.results, data.overall_intent);
+                setTimeout(() => { output.innerHTML = html; saveToHistory(id, finalText, data.results, data.overall_intent, html, intensity); }, 400);
+
+            } catch (e) { output.innerHTML = "<div class='py-12 text-center text-red-400'>服务异常，请检查后端状态。</div>"; }
+            finally { btn.disabled = false; btn.innerText = "开始赏析"; }
+        }
+
+        function saveToHistory(id, text, results, intent, html, intensity) {
+            historyData.unshift({ id, time: new Date().toLocaleTimeString(), preview: text.slice(0, 15), text, html, intensity });
+            localStorage.setItem('echoes_history', JSON.stringify(historyData));
+            updateHistoryUI();
+        }
+        function updateHistoryUI() {
+            const list = document.getElementById('h-list'); document.getElementById('h-count').innerText = historyData.length;
+            list.innerHTML = historyData.map(h => `<div class="history-card relative p-4 bg-white border border-gray-100 rounded-2xl cursor-pointer hover:border-indigo-200 transition-all group ${h.id === currentActiveId ? 'history-active' : ''}" onclick="loadH(${h.id})"><div class="flex justify-between items-start mb-1"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-400 font-bold">${h.time}</span><span class="text-[8px] px-1.5 py-0.5 rounded-sm ${h.intensity == 2 ? 'bg-indigo-50 text-indigo-400' : 'bg-gray-100 text-gray-400'} font-bold">${h.intensity == 2 ? '高级' : '标准'}</span></div><button onclick="delH(event, ${h.id})" class="del-btn opacity-0 text-gray-300 hover:text-red-500 font-bold">×</button></div><div class="text-sm text-gray-600 truncate pr-4 font-medium">${h.preview}...</div></div>`).join('');
+        }
+        function loadH(id) { currentActiveId = id; const h = historyData.find(i => i.id === id); if(h) { document.getElementById('txt').value = h.text; document.getElementById('char-count').innerText = `${h.text.length} / 2000`; document.getElementById('output').innerHTML = h.html; setMode(h.intensity); updateHistoryUI(); } }
+        function delH(e, id) { e.stopPropagation(); historyData = historyData.filter(i => i.id !== id); localStorage.setItem('echoes_history', JSON.stringify(historyData)); updateHistoryUI(); }
+    </script>
+</body>
+</html>
